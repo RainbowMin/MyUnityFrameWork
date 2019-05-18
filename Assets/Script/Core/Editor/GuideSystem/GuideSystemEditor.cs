@@ -116,6 +116,11 @@ public class GuideSystemEditor
         data.SetNote(GuideSystemBase.c_CallToNextKey, "是否接收调用去下一步引导");
         data.SetFieldType(GuideSystemBase.c_CallToNextKey, FieldType.Bool, null);
 
+        data.TableKeys.Add(GuideSystemBase.c_CustomEventKey);
+        data.SetDefault(GuideSystemBase.c_CustomEventKey, "Null");
+        data.SetNote(GuideSystemBase.c_CustomEventKey, "自定义事件名称");
+        data.SetFieldType(GuideSystemBase.c_CustomEventKey, FieldType.StringArray, null);
+
         data.TableKeys.Add(GuideSystemBase.c_ConditionToNextKey);
         data.SetDefault(GuideSystemBase.c_ConditionToNextKey, "False");
         data.SetNote(GuideSystemBase.c_ConditionToNextKey, "是否自动判断条件去下一步引导");
@@ -142,7 +147,7 @@ public class GuideSystemEditor
         data.SetFieldType(GuideSystemBase.c_TipContentKey, FieldType.String, null);
 
         data.TableKeys.Add(GuideSystemBase.c_TipContentPosKey);
-        data.SetDefault(GuideSystemBase.c_TipContentPosKey, "0|0|0");
+        data.SetDefault(GuideSystemBase.c_TipContentPosKey, "0,0,0");
         data.SetNote(GuideSystemBase.c_TipContentPosKey, "提示文本位置");
         data.SetFieldType(GuideSystemBase.c_TipContentPosKey, FieldType.Vector3, null);
 
@@ -151,7 +156,7 @@ public class GuideSystemEditor
         data.SetNote(GuideSystemBase.c_MaskAlphaKey, "遮罩Alpha");
         data.SetFieldType(GuideSystemBase.c_MaskAlphaKey, FieldType.Float, null);
 
-        DataEditorWindow.SaveData(GuideSystemBase.c_guideDataName, data);
+        TableDataEditor.SaveData(GuideSystemBase.c_guideDataName, data);
     }
 
     static void CreateGuideWindowScript()

@@ -5,10 +5,10 @@ using UnityEngine.UI;
 
 public class LanguageComponent : MonoBehaviour
 {
-    public string m_moduleName = LanguageManager.c_defaultModuleKey;
-    public string m_languageID = "";
-
-    public Text m_text;
+    public string languageKey = "";
+    [System.NonSerialized]
+   public Text m_text;
+  
 
     public void Start()
     {
@@ -27,7 +27,12 @@ public class LanguageComponent : MonoBehaviour
 
     public void ResetLanguage()
     {
-        m_text.text = LanguageManager.GetContent(m_moduleName,m_languageID);
+        if (string.IsNullOrEmpty(languageKey))
+            return;
+
+        string value = LanguageManager.GetContentByKey(languageKey).ToString();
+        value = value.Replace("\\n", "\n");
+        m_text.text = value;
     }
 
     void ReceviceLanguageChange(params object[] objs)

@@ -5,7 +5,45 @@ using System.Collections.Generic;
 
 public abstract class IApplicationStatus
 {
+    #region UI 管理
+
     List<UIWindowBase> m_uiList = new List<UIWindowBase>();
+
+    /// <summary>
+    /// 获取现在ApplicationStatus管理的打开的UI的个数
+    /// </summary>
+    /// <returns></returns>
+    public int GetUIListCount()
+    {
+        return m_uiList.Count;
+    }
+
+    public List<UIWindowBase> GetUIList()
+    {
+        return m_uiList;
+    }
+
+    /// <summary>
+    /// 获取status打开的window的最上层Window
+    /// </summary>
+    /// <returns></returns>
+    public UIWindowBase GetStatusTopUIWindow()
+    {
+        if (m_uiList.Count > 0)
+            return m_uiList[m_uiList.Count - 1];
+
+        return null;
+    }
+
+    public UIWindowBase GetUI(string name)
+    {
+        foreach (var item in m_uiList)
+        {
+            if (item.name == name)
+                return item;
+        }
+        return null;
+    }
 
     public T OpenUI<T>() where T: UIWindowBase
     {
@@ -14,6 +52,15 @@ public abstract class IApplicationStatus
         m_uiList.Add(ui);
 
         return (T)ui;
+    }
+
+    public UIWindowBase OpenUI(string name)  
+    {
+        UIWindowBase ui = UIManager.OpenUIWindow(name);
+
+        m_uiList.Add(ui);
+
+        return ui;
     }
 
     public void OpenUIAsync<T>() where T:UIWindowBase
@@ -31,14 +78,38 @@ public abstract class IApplicationStatus
         UIManager.CloseUIWindow(ui);
     }
 
-    public void CloseAllUI()
+    public void CloseUI(UIWindowBase ui)
+    {
+        m_uiList.Remove(ui);
+        UIManager.CloseUIWindow(ui);
+    }
+
+    public bool IsUIOpen<T>() where T : UIWindowBase
     {
         for (int i = 0; i < m_uiList.Count; i++)
         {
-            UIManager.CloseUIWindow(m_uiList[i]);
+            UIWindowBase tempWin = m_uiList[i];
+            if (tempWin.GetType() == typeof(T) 
+                &&(tempWin.windowStatus == UIWindowBase.WindowStatus.Open 
+                || tempWin.windowStatus == UIWindowBase.WindowStatus.OpenAnim))
+                return true;
+        }
+        return false;
+    }
+
+    public void CloseAllUI(bool isPlayAnim = true)
+    {
+        for (int i = 0; i < m_uiList.Count; i++)
+        {
+            UIManager.CloseUIWindow(m_uiList[i],isPlayAnim);
         }
         m_uiList.Clear();
     }
+
+    #endregion
+
+    #region 生命周期
+
     /// <summary>
     /// 当状态第一次创建时调用（生命周期里只调用一次）
     /// </summary>
@@ -82,7 +153,6 @@ public abstract class IApplicationStatus
     {
 
     }
-
     public virtual IEnumerator InChangeScene(ChangSceneFinish handle)
     {
         if (handle != null)
@@ -91,14 +161,16 @@ public abstract class IApplicationStatus
             {
                 handle();
             }
-            catch(Exception e)
+            catch (Exception e)
             {
                 Debug.LogError(e.ToString());
             }
         }
 
-        yield  break;
+        yield break;
     }
+
+    #endregion
 
     public delegate void ChangSceneFinish();
 }

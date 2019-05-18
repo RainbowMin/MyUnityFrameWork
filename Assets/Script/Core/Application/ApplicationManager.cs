@@ -9,13 +9,21 @@ public class ApplicationManager : MonoBehaviour
 
     public static ApplicationManager Instance
     {
-        get { return ApplicationManager.instance; }
+        get {
+            if (instance == null)
+            {
+              instance =  FindObjectOfType<ApplicationManager>();
+
+            }
+            return ApplicationManager.instance; }
         set { ApplicationManager.instance = value; }
     }
 
     public AppMode m_AppMode = AppMode.Developing;
 
     public bool m_useAssetsBundle = false;
+
+
 
     public static AppMode AppMode
     {
@@ -30,7 +38,7 @@ public class ApplicationManager : MonoBehaviour
 #else
             return instance.m_AppMode;
 #endif
-        }
+        } 
     }
 
     public bool UseAssetsBundle
@@ -42,6 +50,30 @@ public class ApplicationManager : MonoBehaviour
 #else
             return m_useAssetsBundle;
 #endif
+        }
+    }
+
+    public static string Version
+    {
+        get
+        {
+            return Application.version + "." + HotUpdateManager.GetHotUpdateVersion();
+        }
+    }
+
+    public static SystemLanguage Langguage
+    {
+        get
+        {
+            if (Application.isPlaying)
+                return instance.langguage;
+            else
+                return Application.systemLanguage;
+        }
+
+        set
+        {
+            instance.langguage = value;
         }
     }
 
@@ -58,6 +90,15 @@ public class ApplicationManager : MonoBehaviour
     public List<string> m_globalLogic;
     [HideInInspector]
     public string currentStatus;
+
+    /// <summary>
+    /// 语言
+    /// </summary>
+    public SystemLanguage langguage = SystemLanguage.ChineseSimplified;
+    /// <summary>
+    /// 显示括号标识多语言转换的字段
+    /// </summary>
+    public bool showLanguageValue = false;
     public void Awake()
     {
         instance = this;
@@ -71,8 +112,8 @@ public class ApplicationManager : MonoBehaviour
     {
         DontDestroyOnLoad(gameObject);
         SetResourceLoadType();               //设置资源加载类型
-        ResourcesConfigManager.Initialize(); //资源路径管理器启动
-
+        //ResourcesConfigManager.Initialize(); //资源路径管理器启动
+        AudioPlayManager.Init();
         MemoryManager.Init();                //内存管理初始化
         Timer.Init();                        //计时器启动
         InputManager.Init();                 //输入管理器启动

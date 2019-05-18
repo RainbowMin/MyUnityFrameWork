@@ -10,6 +10,8 @@ using FrameWork;
 
 public class JsonNetworkService : INetworkInterface 
 {
+    public int m_msgCode = 0;
+
     /// <summary>
     /// 消息结尾符
     /// </summary>
@@ -19,6 +21,12 @@ public class JsonNetworkService : INetworkInterface
     /// 文本中如果有结尾符则替换成这个
     /// </summary>
     public const string c_endCharReplaceString = "<FCP:AND>";
+
+    public override void Connect()
+    {
+        m_msgCode = 0;
+        base.Connect();
+    }
 
     public override void SpiltMessage(byte[] data, ref int offset, int length)
     {
@@ -107,19 +115,44 @@ public class JsonNetworkService : INetworkInterface
         {
             if(s != null && s != "")
             {
+                //Debug.Log("MessageReceive ->" + s);
+
                 NetWorkMessage msg = new NetWorkMessage();
 
-                s = WWW.UnEscapeURL(s);
+                //s = WWW.UnEscapeURL(s);
+                //Debug.Log("MessageReceive0 ->" + s);
                 s = s.Replace(c_endCharReplaceString, c_endChar.ToString());
-
-                Debug.Log(s);
-
+                //Debug.Log("MessageReceive1 ->" + s);
                 Dictionary<string, object> data = Json.Deserialize(s) as Dictionary<string, object>;
 
                 msg.m_data = data;
                 msg.m_MessageType = data["MT"].ToString();
 
-                m_messageCallBack(msg);
+                if(data.ContainsKey("MsgCode"))
+                {
+                    msg.m_MsgCode = int.Parse(data["MsgCode"].ToString());
+
+                    if(m_msgCode != msg.m_MsgCode)
+                    {
+                        if (msg.m_MsgCode > m_msgCode)
+                        {
+                            m_msgCode = msg.m_MsgCode;
+                            m_msgCode++;
+                        }
+
+                        Debug.LogError("MsgCode error currentCode " + m_msgCode + " server code " + msg.m_MsgCode);
+                        //throw new Exception();
+                    }
+                    else
+                    {
+                        m_msgCode++;
+                        m_messageCallBack(msg);
+                    }
+                }
+                else
+                {
+                    m_messageCallBack(msg);
+                }
             }
         }
         catch(Exception e)

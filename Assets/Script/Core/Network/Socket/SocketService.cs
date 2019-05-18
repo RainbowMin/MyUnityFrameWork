@@ -24,6 +24,8 @@ public class SocketService : SocketBase
     public override void Close()
     {
         isConnect = false;
+        m_connectStatusCallback(NetworkState.ConnectBreak);
+
         if (m_Socket != null)
         {
             m_Socket.Close(0);
@@ -39,7 +41,10 @@ public class SocketService : SocketBase
 
     public override void Connect()
     {
-        Close();
+        if(isConnect)
+        {
+            Close();
+        }
 
         m_connThread = null;
         m_connThread = new Thread(new ThreadStart(RequestConnect));

@@ -2,7 +2,7 @@
 using System.Collections;
 using System;
 
-public class ParseTool : MonoBehaviour 
+public static class ParseTool  
 {
 
     public static float[] String2FloatArray(string value)
@@ -40,7 +40,7 @@ public class ParseTool : MonoBehaviour
     {
         try
         {
-            string[] values = value.Split('|');
+            string[] values = value.Split(',');
             float x = float.Parse(values[0]);
             float y = float.Parse(values[1]);
 
@@ -73,7 +73,7 @@ public class ParseTool : MonoBehaviour
     {
         try
         {
-            string[] values = value.Split('|');
+            string[] values = value.Split(',');
             float x = float.Parse(values[0]);
             float y = float.Parse(values[1]);
             float z = float.Parse(values[2]);
@@ -109,7 +109,7 @@ public class ParseTool : MonoBehaviour
     {
         try
         {
-            string[] values = value.Split('|');
+            string[] values = value.Split(',');
             float r = float.Parse(values[0]);
             float g = float.Parse(values[1]);
             float b = float.Parse(values[2]);

@@ -52,22 +52,16 @@ public class GameObjectManager :MonoBehaviour
         {
             throw new Exception("CreateGameObject error : l_prefab  is null");
         }
-
-        GameObject instanceTmp = Instantiate(prefab);
+        Transform transform = parent == null ? null : parent.transform;
+        GameObject instanceTmp = Instantiate(prefab, transform);
         instanceTmp.name = prefab.name;
-
-        if (parent != null)
-        {
-            instanceTmp.transform.SetParent(parent.transform);
-        }
-        //l_instanceTmp.transform.localScale = Vector3.one;
         return instanceTmp;
     }
 
 
     public static bool IsExist(string objectName)
     {
-        if (objectName == null)
+        if (string.IsNullOrEmpty( objectName))
         {
             Debug.LogError("GameObjectManager objectName is null!");
             return false;
@@ -81,6 +75,19 @@ public class GameObjectManager :MonoBehaviour
         return false;
     }
 
+    //判断是否在对象池中
+    public static bool IsExist(GameObject go)
+    {
+        if (s_objectPool.ContainsKey(go.name) && s_objectPool[go.name].Count > 0)
+        {
+            return s_objectPool[go.name].Contains(go);
+        }
+        else
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// 从对象池取出一个对象，如果没有，则直接创建它
     /// </summary>
@@ -89,42 +96,42 @@ public class GameObjectManager :MonoBehaviour
     /// <returns>返回这个对象</returns>
     public static GameObject CreateGameObjectByPool(string name,GameObject parent = null,bool isSetActive = true)
     {
+        GameObject go = null;
         if (IsExist(name))
         {
-            GameObject go = s_objectPool[name][0];
+             go = s_objectPool[name][0];
             s_objectPool[name].RemoveAt(0);
 
-            if(isSetActive)
-                go.SetActive(true);
-
-            if (parent == null)
-            {
-                go.transform.SetParent(null);
-            }
-            else
-            {
-                go.transform.SetParent(parent.transform);
-            }
-
-            //go.transform.localScale = Vector3.one;
-
-            return go;
+           
         }
         else
         {
-            return CreateGameObject(name, parent);
+            go = CreateGameObject(name, parent);
         }
+        if (isSetActive)
+            go.SetActive(true);
+
+        if (parent == null)
+        {
+            go.transform.SetParent(null);
+        }
+        else
+        {
+            go.transform.SetParent(parent.transform);
+        }
+
+        //go.transform.localScale = Vector3.one;
+
+        return go;
     }
 
     public static GameObject CreateGameObjectByPool(GameObject prefab, GameObject parent = null, bool isSetActive = true)
     {
+        GameObject go = null;
         if (IsExist(prefab.name))
         {
-            GameObject go = s_objectPool[prefab.name][0];
+             go = s_objectPool[prefab.name][0];
             s_objectPool[prefab.name].RemoveAt(0);
-
-            if (isSetActive)
-                go.SetActive(true);
 
             if (parent == null)
             {
@@ -134,19 +141,25 @@ public class GameObjectManager :MonoBehaviour
             {
                 go.transform.SetParent(parent.transform);
             }
-            return go;
+
         }
         else
         {
-            return CreateGameObject(prefab, parent);
+            go= CreateGameObject(prefab, parent);
         }
+        if (isSetActive)
+            go.SetActive(true);
+
+        
+        return go;
     }
 
     /// <summary>
     /// 将一个对象放入对象池
     /// </summary>
-    /// <param name="obj">目标对象</param>
-    public static void DestroyGameObjectByPool(GameObject obj, bool isSetActive = true)
+    /// <param name="obj"></param>
+    /// <param name="isSetInactive">是否将放入的物体设为不激活状态（obj.SetActive(false)）</param>
+    public static void DestroyGameObjectByPool(GameObject obj, bool isSetInactive = true)
     {
         string key = obj.name.Replace("(Clone)", "");
 
@@ -162,7 +175,7 @@ public class GameObjectManager :MonoBehaviour
 
         s_objectPool[key].Add(obj);
 
-        if(isSetActive)
+        if(isSetInactive)
             obj.SetActive(false);
         else
         {

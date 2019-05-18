@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System;
-using FrameWork;
 
 public class DevelopReplayManager 
 {
@@ -51,8 +50,17 @@ public class DevelopReplayManager
         set { s_onLunchCallBack = value; }
     }
 
+    #region Init
+
     public static void Init(bool isQuickLunch)
     {
+
+#if UNITY_EDITOR
+        phonePath = Application.dataPath.Replace("Assets", "Logs") + "/";
+#else
+        phonePath = "/storage/emulated/0/" + Application.productName + "/";
+#endif
+
         if (isQuickLunch)
         {
             //复盘模式可以手动开关
@@ -88,9 +96,7 @@ public class DevelopReplayManager
             RandomService.SetRandomList(s_randomList);
 
             //关闭正常输入，保证回放数据准确
-            InputUIEventProxy.IsActive = false;
             IInputProxyBase.IsActive = false;
-            InputNetworkEventProxy.IsActive = false;
         }
         else
         {
@@ -106,7 +112,7 @@ public class DevelopReplayManager
                 //记录随机数列
                 RandomService.OnRandomCreat += OnGetRandomCallBack;
                 InputManager.OnEveryEventDispatch += OnEveryEventCallBack; //记录输入
-                OpenWriteFileStream(GetLogFileName()); //开启文件流
+                OpenWriteFileStream(GetReplayFileName()); //开启文件流
             }
         }
 
@@ -145,6 +151,8 @@ public class DevelopReplayManager
     {
         WriteRandomRecord(random);
     }
+
+    #endregion
 
     #region SaveReplayFile
 
@@ -217,23 +225,31 @@ public class DevelopReplayManager
 
     public static void LoadReplayFile(string fileName)
     {
-        string eventContent = ResourceIOTool.ReadStringByFile(
-            PathTool.GetAbsolutePath(ResLoadLocation.Persistent,
-                                     PathTool.GetRelativelyPath(
-                                                    c_directoryName,
-                                                    fileName,
-                                                    c_eventExpandName)));
-
-        string randomContent = ResourceIOTool.ReadStringByFile(
-            PathTool.GetAbsolutePath(ResLoadLocation.Persistent,
-                                     PathTool.GetRelativelyPath(
-                                                    c_directoryName,
-                                                    fileName,
-                                                    c_randomExpandName)));
+        string eventContent = ResourceIOTool.ReadStringByFile(GetReplayEventFilePath(fileName));
+        string randomContent = ResourceIOTool.ReadStringByFile(GetReplayRandomFilePath(fileName));
 
         LoadEventStream(eventContent.Split('\n'));
         LoadRandomList(randomContent.Split('\n'));
     }
+
+    public static string GetReplayEventFilePath(string fileName)
+    {
+        return PathTool.GetAbsolutePath(ResLoadLocation.Persistent,
+                                     PathTool.GetRelativelyPath(
+                                                    c_directoryName,
+                                                    fileName,
+                                                    c_eventExpandName));
+    }
+
+    public static string GetReplayRandomFilePath(string fileName)
+    {
+        return PathTool.GetAbsolutePath(ResLoadLocation.Persistent,
+                                     PathTool.GetRelativelyPath(
+                                                    c_directoryName,
+                                                    fileName,
+                                                    c_randomExpandName));
+    }
+
     public static Deserializer Deserializer = new Deserializer();
     static void LoadEventStream(string[] content)
     {
@@ -264,10 +280,20 @@ public class DevelopReplayManager
 
     #endregion
 
+    #region SaveScreenShot
+
+    static void SaveScreenShot(string fileName)
+    {
+        FileTool.CreatFilePath(fileName);
+        UnityEngine.ScreenCapture.CaptureScreenshot(fileName);
+    }
+
+    #endregion
+
     #region GUI
 
     static int margin = 3;
-    static Rect consoleRect = new Rect(margin, margin, Screen.width * 0.5f - margin, Screen.height - 2 * margin);
+    static Rect consoleRect = new Rect(margin, margin, Screen.width * 0.2f - margin, Screen.height - 2 * margin);
 
     #region Develop Menu
 
@@ -332,15 +358,31 @@ public class DevelopReplayManager
 
     #region ReplayListGUI
 
+    static bool isUploadReplay;
+
     static void ReplayListGUI()
     {
         scrollPos = GUILayout.BeginScrollView(scrollPos);
 
         for (int i = 0; i < FileNameList.Length; i++)
         {
-            if (GUILayout.Button(FileNameList[i]))
+            if (!isUploadReplay)
             {
-                ChoseReplayMode(true, FileNameList[i]);
+                if (GUILayout.Button(FileNameList[i]))
+                {
+                    ChoseReplayMode(true, FileNameList[i]);
+                }
+            }
+            else
+            {
+                if (GUILayout.Button("上传 " + FileNameList[i]))
+                {
+                    string replayPath = GetReplayEventFilePath(FileNameList[i]);
+                    string randomPath = GetReplayRandomFilePath(FileNameList[i]);
+
+                    HTTPTool.Upload_Request_Thread(URLManager.GetURL("ReplayFileUpLoadURL"), replayPath, UploadCallBack);
+                    HTTPTool.Upload_Request_Thread(URLManager.GetURL("ReplayFileUpLoadURL"), randomPath, UploadCallBack);
+                }
             }
         }
 
@@ -354,6 +396,18 @@ public class DevelopReplayManager
                 FileTool.SafeDeleteDirectory(PathTool.GetAbsolutePath(ResLoadLocation.Persistent, c_directoryName));
                 FileNameList = new string[0];
             });
+        }
+
+        if (URLManager.GetURL("ReplayFileUpLoadURL") != null)
+        {
+            if (GUILayout.Button("上传模式 ： " + isUploadReplay))
+            {
+                isUploadReplay = !isUploadReplay;
+            }
+        }
+        else
+        {
+            GUILayout.Label("上传持久数据需要在 URLConfig -> ReplayFileUpLoadURL 配置上传目录");
         }
 
         if (GUILayout.Button("返回上层"))
@@ -382,14 +436,21 @@ public class DevelopReplayManager
 
     static string showContent = "";
     static string LogPath = "";
-
+    static string LogName = "";
+    //#if UNITY_EDITOR
+    //    static string phonePath =  Application.dataPath.Replace("Assets","Logs") + "/";
+    //#else
+    //    static  string phonePath = "/storage/emulated/0/" + Application.productName + "/";
+    //#endif
+    static string phonePath;
     static void ShowLogList()
     {
         scrollPos = GUILayout.BeginScrollView(scrollPos);
 
         for (int i = 0; i < FileNameList.Length; i++)
         {
-            if (GUILayout.Button(FileNameList[i]))
+            LogName = FileNameList[i];
+            if (GUILayout.Button(LogName))
             {
                 isShowLog = true;
                 scrollPos = Vector2.zero;
@@ -399,6 +460,20 @@ public class DevelopReplayManager
         }
 
         GUILayout.EndScrollView();
+        if (GUILayout.Button("复制到设备"))
+        {
+            for (int i = 0; i < FileNameList.Length; i++)
+            {
+               string name = FileNameList[i];
+                string path = phonePath + name + ".txt";
+              string  LogPath = LogOutPutThread.GetPath(name);
+
+                FileTool.CreatFilePath(path);
+                File.Copy(LogPath, path, true);
+                
+            }
+            GUIUtil.ShowTips("复制成功");
+        }
 
         if (GUILayout.Button("清除日志"))
         {
@@ -443,6 +518,24 @@ public class DevelopReplayManager
             GUILayout.Label("上传日志需要在 URLConfig -> LogUpLoadURL 配置上传目录");
         }
 
+#if UNITY_ANDROID
+        if (GUILayout.Button("导出到设备"))
+        {
+            try
+            {
+                string path = phonePath+ LogName + ".txt";
+                FileTool.CreatFilePath(path);
+                File.Copy(LogPath, path,true);
+                GUIUtil.ShowTips("复制成功");
+            }
+            catch (Exception e)
+            {
+                GUIUtil.ShowTips(e.ToString());
+            }
+
+        }
+#endif
+
         if (GUILayout.Button("复制到剪贴板"))
         {
             TextEditor tx = new TextEditor();
@@ -457,9 +550,9 @@ public class DevelopReplayManager
         }
     }
 
-    #endregion
+#endregion
 
-    #region PersistentFileGUI
+#region PersistentFileGUI
 
     static bool isShowPersistentFile = false;
     static void PersistentFileGUI()
@@ -567,9 +660,9 @@ public class DevelopReplayManager
         }
     }
 
-    #endregion
+#endregion
 
-    #region WarnPanel
+#region WarnPanel
 
     static Rect s_warnPanelRect = new Rect(Screen.width * 0.1f, Screen.height * 0.25f, Screen.width * 0.8f, Screen.height * 0.5f);
 
@@ -606,11 +699,11 @@ public class DevelopReplayManager
         }
     }
 
-    #endregion
+#endregion
 
-    #endregion
+#endregion
 
-    #region ProfileGUI
+#region ProfileGUI
 
     static void SwitchProfileGUI()
     {
@@ -680,11 +773,19 @@ public class DevelopReplayManager
 
             Time.timeScale *= 0.5f;
         }
+
+        if (Input.GetKeyDown(KeyCode.F12))
+        {
+            string name = GetScreenshotFileName();
+            Debug.Log("已保存 屏幕截图 " + name);
+
+            SaveScreenShot(name);
+        }
     }
 
-        #endregion
+#endregion
 
-    #region RecordMode
+#region RecordMode
     static void RecordModeGUI()
     {
         GUILayout.Window(2, consoleRect, RecordModeGUIWindow, "Develop Control Panel");
@@ -709,9 +810,9 @@ public class DevelopReplayManager
         }
     }
 
-    #endregion
+#endregion
 
-    #region ReplayMode
+#region ReplayMode
 
     /// <summary>
     /// 回放模式的GUI
@@ -800,9 +901,9 @@ public class DevelopReplayManager
 #endif
     }
 
-    #endregion
+#endregion
 
-    #endregion
+#endregion
 
     #region Update
 
@@ -839,7 +940,9 @@ public class DevelopReplayManager
         s_currentTime += Time.deltaTime;
     }
 
-#endregion
+    #endregion
+
+    #region Tool
 
     public static string[] GetRelpayFileNames()
     {
@@ -859,13 +962,31 @@ public class DevelopReplayManager
         return relpayFileNames.ToArray() ?? new string[0];
     }
 
-    static string GetLogFileName()
+    static string GetReplayFileName()
     {
         DateTime now = System.DateTime.Now;
-        string logName = string.Format("Replay{0}-{1}-{2}#{3}-{4}-{5}",
+        string logName = string.Format("Replay{0}-{1:D2}-{2:D2}#{3:D2}-{4:D2}-{5:D2}",
             now.Year, now.Month, now.Day, now.Hour, now.Minute, now.Second);
 
         return logName;
+    }
+
+    static string GetScreenshotFileName()
+    {
+        DateTime now = System.DateTime.Now;
+        //string screenshotName = string.Format("Screenshot{0}-{1:D2}-{2:D2}#{3:D2}-{4:D2}-{5:D2}",
+        //    now.Year, now.Month, now.Day, now.Hour, now.Minute, now.Second);
+
+        string screenshotName = string.Format("ScreenShot_{0}x{1}_{2}", Screen.width, Screen.height, System.DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds);
+
+
+        string path = PathTool.GetAbsolutePath(ResLoadLocation.Persistent,
+                                         PathTool.GetRelativelyPath(
+                                                        "ScreenShot",
+                                                        screenshotName,
+                                                        "jpg"));
+
+        return path;
     }
 
     static void UploadCallBack(string result)
@@ -880,4 +1001,6 @@ public class DevelopReplayManager
         Log,
         PersistentFile
     }
+
+    #endregion
 }

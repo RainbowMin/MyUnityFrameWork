@@ -91,8 +91,6 @@ public class InputDispatcher<Event> : IInputDispatcher where Event : IInputEvent
 
     void DispatchSingleEvent(Event inputEvent, InputEventHandle<Event> callBack)
     {
-        //Debug.Log("DispatchSingleEvent");
-
         if (callBack != null)
         {
             try
@@ -101,7 +99,7 @@ public class InputDispatcher<Event> : IInputDispatcher where Event : IInputEvent
             }
             catch (Exception e)
             {
-                Debug.LogError(e.ToString());
+                Debug.LogError("DispatchSingleEvent Name: " + typeof(Event).ToString() + " key: " + inputEvent.EventKey + " Exception: " + e.ToString());
             }
         }
     }

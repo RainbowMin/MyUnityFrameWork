@@ -2,7 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-namespace FrameWork.SDKInterface
+namespace FrameWork.SDKManager
 {
     public static class SDKManagerNew
     {
@@ -70,9 +70,15 @@ namespace FrameWork.SDKInterface
         /// <summary>
         /// 登陆
         /// </summary>
-        public static void Login(string SDKName)
+        public static void Login(string SDKName,string tag)
         {
+            Dictionary<string, string> data = new Dictionary<string, string>();
+            data.Add(SDKInterfaceDefine.ModuleName, SDKInterfaceDefine.ModuleName_Login);
+            data.Add(SDKInterfaceDefine.Login_ParameterName_Device, Application.identifier);
+            data.Add(SDKInterfaceDefine.SDKName, SDKName);
+            data.Add(SDKInterfaceDefine.Tag, tag);
 
+            Call(data);
         }
 
         #endregion
@@ -82,7 +88,7 @@ namespace FrameWork.SDKInterface
         /// <summary>
         /// 支付,默认访问第一个接口
         /// </summary>
-        public static void Pay(string goodsID, GoodsType goodsType = GoodsType.NORMAL,string orderID = null)
+        public static void Pay(string goodsID, string tag,GoodsType goodsType = GoodsType.NORMAL,string orderID = null)
         {
             Dictionary<string, string> data = new Dictionary<string, string>();
             data.Add(SDKInterfaceDefine.ModuleName, SDKInterfaceDefine.ModuleName_Pay); //支付不传FunctionName
@@ -90,6 +96,24 @@ namespace FrameWork.SDKInterface
             data.Add(SDKInterfaceDefine.Pay_ParameterName_GoodsID, goodsID);
             data.Add(SDKInterfaceDefine.Pay_ParameterName_GoodsType, goodsType.ToString());
             data.Add(SDKInterfaceDefine.Pay_ParameterName_CpOrderID, orderID);
+            data.Add(SDKInterfaceDefine.Tag, tag);
+
+            Call(data);
+        }
+
+        /// <summary>
+        /// 支付,默认访问第一个接口
+        /// </summary>
+        public static void Pay(string SDKName,string goodsID,string tag, GoodsType goodsType = GoodsType.NORMAL, string orderID = null)
+        {
+            Dictionary<string, string> data = new Dictionary<string, string>();
+            data.Add(SDKInterfaceDefine.SDKName, SDKName);
+            data.Add(SDKInterfaceDefine.ModuleName, SDKInterfaceDefine.ModuleName_Pay); //支付不传FunctionName
+
+            data.Add(SDKInterfaceDefine.Pay_ParameterName_GoodsID, goodsID);
+            data.Add(SDKInterfaceDefine.Pay_ParameterName_GoodsType, goodsType.ToString());
+            data.Add(SDKInterfaceDefine.Pay_ParameterName_CpOrderID, orderID);
+            data.Add(SDKInterfaceDefine.Tag, tag);
 
             Call(data);
         }
@@ -107,12 +131,29 @@ namespace FrameWork.SDKInterface
         }
 
         /// <summary>
+        /// 加载广告,默认访问第一个接口
+        /// </summary>
+        public static void LoadAD(string SDKName,ADType adType, string tag = "")
+        {
+
+        }
+
+        /// <summary>
         /// 显示广告
         /// </summary>
         public static void PlayAD(ADType adType, string tag = "")
         {
 
         }
+
+        /// <summary>
+        /// 显示广告
+        /// </summary>
+        public static void PlayAD(string SDKName, ADType adType, string tag = "")
+        {
+
+        }
+
         /// <summary>
         /// 隐藏广告
         /// </summary>
@@ -130,7 +171,6 @@ namespace FrameWork.SDKInterface
         {
 
         }
-
         /// <summary>
         /// 隐藏广告
         /// </summary>
@@ -239,7 +279,7 @@ namespace FrameWork.SDKInterface
 
         #endregion
 
-        #region SDK接口
+      #region SDK接口
 
         #if UNITY_ANDROID
 
@@ -251,9 +291,10 @@ namespace FrameWork.SDKInterface
 
         static void Call(Dictionary<string, string> data)
         {
-            string content = Serializer.Serialize(data);
 
-            #if UNITY_ANDROID
+        #if UNITY_ANDROID
+
+            string content = Serializer.Serialize(data);
 
             if (androidInterface == null)
             {
@@ -261,9 +302,9 @@ namespace FrameWork.SDKInterface
             }
             androidInterface.CallStatic("UnityRequestFunction", content);
 
-            #elif UNITY_IOS
+#elif UNITY_IOS
 
-            #endif
+#endif
         }
 
         #endregion
@@ -373,12 +414,22 @@ namespace FrameWork.SDKInterface
         public bool isSuccess;
         public string goodsId;
         public GoodsType goodsType;
+        public StoreName storeName;
+        public string receipt;
     }
 
     public struct OnLoginInfo
     {
         public bool isSuccess;
         public string accountId;
+        public string nickName;
+        public string headPortrait;
+        /// <summary>
+        /// 账号登录使用的密码
+        /// </summary>
+        public string pw;
+        public LoginPlatform loginPlatform;
+        public LoginErrorEnum error;
     }
 
     public enum GoodsType
@@ -386,6 +437,16 @@ namespace FrameWork.SDKInterface
         NORMAL,    //可以反复购买的商品
         ONCE_ONLY, //只能购买一次的商品
         RIGHTS,    //购买持续一段时间的商品，例如会员
+    }
+
+    public enum LoginErrorEnum
+    {
+        None,
+        GameCenterNotOpen,
+        /// <summary>
+        /// 没有安装相应的app
+        /// </summary>
+        NoInstallApp,
     }
 
     #endregion

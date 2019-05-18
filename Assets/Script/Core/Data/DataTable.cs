@@ -14,6 +14,7 @@ public class DataTable : Dictionary<string, SingleData>
     const string c_fieldTypeTableTitle    = "type";
 
     const char c_EnumSplit = '|';
+    const char c_DataFieldAssetTypeSplit = '&';
 
     public string m_tableName;
 
@@ -46,6 +47,11 @@ public class DataTable : Dictionary<string, SingleData>
     /// 数据所有的Key
     /// </summary>
     public List<string> TableIDs = new List<string>();
+
+    /// <summary>
+    /// 字段的用途区分
+    /// </summary>
+    public Dictionary<string, DataFieldAssetType> m_fieldAssetTypes = new Dictionary<string, DataFieldAssetType>();
 
     /// <summary>
     /// 将文本解析为表单数据
@@ -191,20 +197,32 @@ public class DataTable : Dictionary<string, SingleData>
         {
             if (!l_lineData[i].Equals(""))
             {
-                string[] content = l_lineData[i].Split(c_EnumSplit);
+                string field = l_data.TableKeys[i];
+
+                string[] tempType = l_lineData[i].Split(c_DataFieldAssetTypeSplit);
+                string[] content = tempType[0].Split(c_EnumSplit);
 
                 try
                 {
-                    l_data.m_tableTypes.Add(l_data.TableKeys[i], (FieldType)Enum.Parse(typeof(FieldType), content[0]));
+                    l_data.m_tableTypes.Add(field, (FieldType)Enum.Parse(typeof(FieldType), content[0]));
 
                     if (content.Length > 1)
                     {
-                        l_data.m_tableEnumTypes.Add(l_data.TableKeys[i], content[1]);
+                        l_data.m_tableEnumTypes.Add(field, content[1]);
                     }
                 }
                 catch(Exception e)
                 {
                     throw new Exception("AnalysisFieldType Exception: " + content + "\n" + e.ToString());
+                }
+
+                if (tempType.Length > 1)
+                {
+                    l_data.m_fieldAssetTypes.Add(field, (DataFieldAssetType)Enum.Parse(typeof(DataFieldAssetType), tempType[1]));
+                }
+                else
+                {
+                    l_data.m_fieldAssetTypes.Add(field, DataFieldAssetType.Data);
                 }
             }
         }
@@ -230,10 +248,13 @@ public class DataTable : Dictionary<string, SingleData>
 
         //type
         List<string> type = new List<string>(data.m_tableTypes.Keys);
+        //Debug.Log("type count " + type.Count);
+        build.Append(c_fieldTypeTableTitle);
+
         if (type.Count > 0)
         {
-            build.Append(c_fieldTypeTableTitle);
             build.Append(c_split);
+
             for (int i = 1; i < data.TableKeys.Count; i++)
             {
                 string key = data.TableKeys[i];
@@ -254,6 +275,12 @@ public class DataTable : Dictionary<string, SingleData>
                     typeString = FieldType.String.ToString();
                 }
 
+                if (data.m_fieldAssetTypes.ContainsKey(key))
+                {
+                    if (data.m_fieldAssetTypes[key] != DataFieldAssetType.Data)
+                        typeString += "&" + data.m_fieldAssetTypes[key];
+                }
+
                 build.Append(typeString);
 
                 if (i != data.TableKeys.Count - 1)
@@ -266,13 +293,19 @@ public class DataTable : Dictionary<string, SingleData>
                 }
             }
         }
+        else
+        {
+            build.Append(c_newline);
+        }
 
         //note
         List<string> noteValue = new List<string>(data.m_noteValue.Keys);
+        build.Append(c_noteTableTitle);
+
         if (noteValue.Count > 0)
         {
-            build.Append(c_noteTableTitle);
             build.Append(c_split);
+
             for (int i = 1; i < data.TableKeys.Count; i++)
             {
                 string key = data.TableKeys[i];
@@ -299,14 +332,20 @@ public class DataTable : Dictionary<string, SingleData>
                 }
             }
         }
+        else
+        {
+            build.Append(c_newline);
+        }
 
         //defauleValue
         List<string> defaultValue = new List<string>(data.m_defaultValue.Keys);
 
+        build.Append(c_defaultValueTableTitle);
+
         if (defaultValue.Count >0)
         {
-            build.Append(c_defaultValueTableTitle);
-            build.Append(c_split);
+             build.Append(c_split);
+
             for (int i = 1; i < data.TableKeys.Count; i++)
             {
                 string key = data.TableKeys[i];
@@ -333,18 +372,25 @@ public class DataTable : Dictionary<string, SingleData>
                 }
             }
         }
+        else
+        {
+            build.Append(c_newline);
+        }
 
         //value
-        foreach (string k in data.Keys)
+        foreach (string k in data.TableIDs)
         {
             SingleData dataTmp = data[k];
             for (int i = 0; i < data.TableKeys.Count; i++)
             {
                 string valueTmp = "";
-
-                if (dataTmp.ContainsKey(data.TableKeys[i]))
+                string field = data.TableKeys[i];
+                string defaultV="";
+                if (data.m_defaultValue.ContainsKey(field))
+                    defaultV = data.m_defaultValue[field];
+                if (dataTmp.ContainsKey(field) && dataTmp[field]!= defaultV)
                 {
-                    valueTmp = dataTmp[data.TableKeys[i]];
+                    valueTmp = dataTmp[field];
                 }
 
                 build.Append(valueTmp);
@@ -442,6 +488,24 @@ public class DataTable : Dictionary<string, SingleData>
             {
                 m_tableEnumTypes.Add(key, enumType);
             }
+        }
+    }
+
+    public void SetAssetTypes(string key, DataFieldAssetType type)
+    {
+        //主键只能是String类型
+        if (key == TableKeys[0])
+        {
+            return;
+        }
+
+        if (m_fieldAssetTypes.ContainsKey(key))
+        {
+            m_fieldAssetTypes[key] = type;
+        }
+        else
+        {
+            m_fieldAssetTypes.Add(key, type);
         }
     }
 
@@ -831,7 +895,7 @@ public class SingleData : Dictionary<string, string>
         }
         catch (Exception e)
         {
-            throw new Exception("SingleData GetVector2 Error TableName is :->" + data.m_tableName + "<- key->" + key + "<-  singleDataName : ->" + m_SingleDataKey + "<- \n" + e.ToString());
+            throw new Exception("SingleData GetVector3Array Error TableName is :->" + data.m_tableName + "<- key->" + key + "<-  singleDataName : ->" + m_SingleDataKey + "<- \n" + e.ToString());
         }
 
         throw new Exception("Don't Exist Value or DefaultValue by ->" + key + "<- TableName is : ->" + data.m_tableName + "<- singleDataName : ->" + m_SingleDataKey + "<-"); // throw  

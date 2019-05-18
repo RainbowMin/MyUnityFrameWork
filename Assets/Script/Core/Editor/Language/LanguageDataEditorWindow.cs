@@ -1,177 +1,163 @@
-﻿using System;
+﻿using HDJ.Framework.Utils;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
+using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 
-public class LanguageDataEditorWindow : EditorWindow 
+public class LanguageDataEditorWindow : EditorWindow
 {
-    const string c_DataPath = "Language";
-    const string c_EditorConfigName = "LanguageEditorConfig";
+   
+    private SystemLanguage currentLanguage;
+    private DataTable currentFileDataTable;
+    private LanguageSettingConfig config;
 
-    static List<string> s_languageList = new List<string>();
+    //所有文件（转换成全路径/）
+    static List<string> s_languageFullKeyFileNameList = new List<string>();
 
-    //所有模块以及模块下的语言ID
-    static Dictionary<string, List<string>> s_languageKeyDict = new Dictionary<string, List<string>>();
-
-    //所有语言列表
-    static List<string> s_languageKeyList = new List<string>();
-
-    private int m_currentSelectIndex;
-    private string m_currentLanguage;
-    //当前语言数据
-    private Dictionary<string,DataTable> m_langeuageDataDict = new Dictionary<string,DataTable>();
-
-    SystemLanguage m_defaultLanguage = SystemLanguage.ChineseSimplified;
+    static LanguageDataEditorWindow win = null;
 
     [MenuItem("Window/多语言编辑器 &5", priority = 600)]
-    public static void ShowWindow()
+    public static LanguageDataEditorWindow ShowWindow()
     {
-        EditorWindow.GetWindow(typeof(LanguageDataEditorWindow));
+        win = EditorWindow.GetWindow<LanguageDataEditorWindow>();
+        win.Init();
+        return win;
     }
+    FolderTreeView treeView;
+    TreeViewState treeViewState = null;
 
+    private void Init()
+    {
+        win = this;
+       config= LanguageDataUtils.LoadEditorConfig();
+
+        if(config == null)
+        {
+            return;
+        }
+
+        if (!config.gameExistLanguages.Contains(currentLanguage))
+        {
+            currentLanguage = config.defaultLanguage;
+        }
+        s_languageFullKeyFileNameList= LanguageDataEditorUtils.LoadLangusgeAllFileNames(currentLanguage);
+        if (!string.IsNullOrEmpty(selectFullFileName))
+        {
+            currentFileDataTable = LanguageDataUtils.LoadFileData(currentLanguage, selectFullFileName);
+        }
+        if (treeViewState == null)
+            treeViewState = new TreeViewState();
+
+        treeView = new FolderTreeView(treeViewState);
+
+        treeView.SetData(s_languageFullKeyFileNameList);
+        treeView.dblclickItemCallBack = ModuleFileDblclickItemCallBack;
+        treeView.selectCallBack = ModuleFileFolderSelectCallBack;
+    }
     void OnEnable()
     {
-        ResourcesConfigManager.Initialize();
-
-        m_currentSelectIndex = 0;
-        EditorGUIStyleData.Init();
-
-        FindAllDataName();
-        LoadEditorConfig();
-        LoadConfig();
+        Init();
     }
-
-    void OnProjectChange()
-    {
-        FindAllDataName();
-        LoadEditorConfig();
-        LoadConfig();
-    }
-
+    public int toolbarOption = 0;
+    private string[] toolbarTexts = { "模块文件", "语言内容编辑", "语言设置" };
+    private bool richText = false;
     void OnGUI()
     {
         titleContent.text = "多语言编辑器";
-
-        if (!Application.isPlaying)
+        if (config == null|| config.gameExistLanguages.Count==0)
         {
-            SelectLanguageGUI();
-            DefaultLanguageGUI();
-            EditorLanguageFieldGUI();
-            EditorLanguageGUI();
-            SaveDataGUI();
             AddLanguageGUI();
-            GenerateLanuageClassGUI();
+            return;
+        }
+        richText = (bool)EditorDrawGUIUtil.DrawBaseValue("使用富文本：", richText);
+        SelectLanguageGUI();
+        DefaultLanguageGUI();
+        SelectEditorModuleGUI();
+        SearchValueGUI();
+        toolbarOption = GUILayout.Toolbar(toolbarOption, toolbarTexts, GUILayout.Width(Screen.width));
+        switch (toolbarOption)
+        {
+            case 0:
+                EditorLanguageModuleFileGUI();
+                break;
+            case 1:
+                EditorLanguageFieldGUI();
+                break;
+            case 2:
+                ConfigSettingGUI();
+                AddLanguageGUI();
+                DeleteLanguageGUI();
+                break;
+        }
+
+        GUILayout.FlexibleSpace();
+        SaveDataGUI();
+    }
+    public string searchValue;
+    private string searchKey = "";
+    private void SearchValueGUI()
+    {
+        searchValue = EditorDrawGUIUtil.DrawSearchField(searchValue);
+
+        if (!string.IsNullOrEmpty(searchValue))
+        {
+            if (searchValue.Contains("/"))
+            {
+                string[] tempV = searchValue.Split('/');
+                string key = tempV[tempV.Length - 1];
+                int indexEnd = searchValue.LastIndexOf("/");
+                string moduleName = searchValue.Remove(indexEnd);
+                if (s_languageFullKeyFileNameList.Contains(moduleName))
+                {
+                    if (selectFullFileName != moduleName)
+                    {
+                        selectFullFileName = moduleName;
+                        Debug.Log("moduleName :" + moduleName);
+                        currentFileDataTable = LanguageDataUtils.LoadFileData(currentLanguage, selectFullFileName);
+                        Debug.Log("currentFileDataTable :" + currentFileDataTable );
+                        Debug.Log("  keys:" + currentFileDataTable.TableIDs.Count);
+                    }
+                    searchKey = key;
+                }
+                else
+                {
+                    selectFullFileName = "";
+                    searchKey = "";
+                }
+
+            }
+            else
+                searchKey = searchValue;
         }
         else
         {
-            EditorGUILayout.LabelField("功能目前不可用");
+            searchKey = "";
         }
     }
-
-    #region 加载/保存编辑器设置
-
-    static void LoadEditorConfig()
-    {
-        s_languageKeyList.Clear();
-        s_languageKeyDict.Clear();
-
-        Dictionary<string, object> config = ConfigEditorWindow.GetEditorConfigData(c_EditorConfigName);
-
-        if (config == null)
-        {
-            config = new Dictionary<string, object>();
-        }
-
-        foreach (var item in config)
-        {
-            List<string> list = new List<string>();
-            List<object> ObjList = (List<object>)item.Value;
-            for (int i = 0; i < ObjList.Count; i++)
-            {
-                list.Add(ObjList[i].ToString());
-
-                s_languageKeyList.Add(item.Key + "/" + ObjList[i].ToString());
-            }
-
-            s_languageKeyDict.Add(item.Key, list);
-        }
-    }
-
-    void LoadConfig()
-    {
-        if (ConfigManager.GetIsExistConfig(LanguageManager.c_configFileName))
-        {
-            Dictionary<string, SingleField> config = ConfigManager.GetData(LanguageManager.c_configFileName);
-
-            if (config.ContainsKey(LanguageManager.c_defaultLanguageKey))
-            {
-                m_defaultLanguage = config[LanguageManager.c_defaultLanguageKey].GetEnum<SystemLanguage>();
-            }
-        }
-    }
-
-    void SaveEditorConfig()
-    {
-        Dictionary<string, object> config = new Dictionary<string, object>();
-
-        foreach (var item in s_languageKeyDict)
-        {
-            config.Add(item.Key, item.Value);
-        }
-
-        ConfigEditorWindow.SaveEditorConfigData(c_EditorConfigName, config);
-    }
-
-    void SaveConfig()
-    {
-        Dictionary<string, SingleField> config = new Dictionary<string, SingleField>();
-
-        //保存默认语言
-        config.Add(LanguageManager.c_defaultLanguageKey, new SingleField(m_defaultLanguage.ToString()));
-
-        //保存语言列表
-        List<string> languageList = new List<string>();
-        foreach (var item in s_languageList)
-        {
-            if (item != "None")
-            {
-                languageList.Add(item);
-            }
-        }
-        config.Add(LanguageManager.c_languageListKey, new SingleField(languageList));
-
-        //保存模块列表
-        List<string> moduleList = new List<string>();
-        foreach (var item in s_languageKeyDict)
-        {
-            moduleList.Add(item.Key);
-        }
-        config.Add(LanguageManager.c_moduleListKey, new SingleField(moduleList));
-
-        ConfigEditorWindow.SaveData(LanguageManager.c_configFileName, config);
-    }
-
-    #endregion
 
     #region 语言设置
 
     void DefaultLanguageGUI()
     {
-        if (m_currentLanguage == m_defaultLanguage.ToString())
+        if (currentLanguage == config.defaultLanguage)
         {
             EditorGUI.indentLevel = 1;
-            EditorGUILayout.LabelField("默认语言", EditorGUIStyleData.WarnMessageLabel);
+            EditorGUILayout.LabelField("默认语言");
         }
     }
 
-    void SetDefaultLanguageGUI(string languageName)
+    void ConfigSettingGUI()
     {
-        if (GUILayout.Button("设为默认语言"))
+        config.defaultLanguage = EditorDrawGUIUtil.DrawPopup("默认语言", config.defaultLanguage, config.gameExistLanguages);
+        string lanNames = "";
+        foreach (var item in config.gameExistLanguages)
         {
-            m_defaultLanguage = (SystemLanguage)Enum.Parse(typeof(SystemLanguage), languageName);
+            lanNames += " " + item;
         }
+        EditorGUILayout.LabelField("已含有语言：" + lanNames);
     }
 
     #endregion
@@ -180,154 +166,227 @@ public class LanguageDataEditorWindow : EditorWindow
 
     void SelectLanguageGUI()
     {
-        string[] mask = s_languageList.ToArray();
-        m_currentSelectIndex = EditorGUILayout.Popup("当前语言：", m_currentSelectIndex, mask);
-        if (mask.Length != 0 
-            && m_currentSelectIndex >= 0
-            && m_currentSelectIndex < mask.Length)
+        GUILayout.BeginHorizontal();
+        currentLanguage = EditorDrawGUIUtil.DrawPopup("当前语言", currentLanguage, config.gameExistLanguages, (lan) =>
+           {
+
+           });
+        if (currentLanguage == SystemLanguage.Chinese)
+            currentLanguage = SystemLanguage.ChineseSimplified;
+
+        if (GUILayout.Button("加载上一次保存"))
         {
-            LoadLanguage(mask[m_currentSelectIndex]);
+
+            DataManager.CleanCache();
+            LanguageManager.IsInit = false;
+            GlobalEvent.DispatchEvent(EditorEvent.LanguageDataEditorChange);
+            currentFileDataTable = LanguageDataUtils.LoadFileData(currentLanguage, selectFullFileName);
+            GUI.FocusControl("");
         }
-        else
-        {
-            Debug.Log("m_currentSelectIndex " + m_currentSelectIndex + " mask.Length " + mask.Length);
-        }
+        GUILayout.EndHorizontal();
     }
-
-    void LoadLanguage(string LanguageName)
-    {
-        if (m_currentLanguage != LanguageName)
-        {
-            m_currentLanguage = LanguageName;
-
-            if (LanguageName != "None")
-            {
-                m_langeuageDataDict.Clear();
-
-                foreach (var item in s_languageKeyDict)
-                {
-                    string savePath = GetLanguageSavePath(LanguageName, item.Key);
-
-                    if (GetIsExistDataEditor(savePath))
-                    {
-                        DataTable data = DataManager.GetData(savePath);
-                         m_langeuageDataDict.Add(item.Key, data);
-                    }
-                }
-            }
-        }
-    }
-
     #endregion
 
     #region 编辑语言字段
 
-    Dictionary<string, bool> LanguageFieldFold = new Dictionary<string, bool>();
-    Vector2 pos_editorField = Vector2.zero;
-    bool isFoldLanguageField = false;
+    private string selectFullFileName = "";
+    private void SelectEditorModuleGUI()
+    {
+        GUILayout.BeginHorizontal();
+        GUILayout.Label("选择编辑模块");
+        GUILayout.FlexibleSpace();
+        EditorGUILayout.SelectableLabel(selectFullFileName);
+        GUILayout.EndHorizontal();
+    }
+    /// <summary>
+    /// 模块文件中双击操作，选择文件
+    /// </summary>
+    /// <param name="t"></param>
+    private void ModuleFileDblclickItemCallBack(FolderTreeViewItem t)
+    {
+        if (t.isDirectory)
+            return;
+
+        selectFullFileName = t.fullPath;
+        currentFileDataTable = LanguageDataUtils.LoadFileData(currentLanguage, selectFullFileName);
+        toolbarOption = 1;
+    }
+    /// <summary>
+    /// 模块文件中单击选择文件
+    /// </summary>
+    /// <param name="t"></param>
+    private void ModuleFileFolderSelectCallBack(FolderTreeViewItem t)
+    {
+        //Debug.Log(t.fullPath+ " depth :" + t.depth +" isDir :"+t.isDirectory);
+        if (t.isDirectory)
+            return;
+
+        selectItemFullName = t.fullPath;
+    }
+    private string selectItemFullName = "";
+    void EditorLanguageModuleFileGUI()
+    {
+        GUILayout.BeginHorizontal();
+        EditorGUILayout.LabelField("▲多语言模块列表(双击选择文件)");
+        GUILayout.FlexibleSpace();
+        if (GUILayout.Button("新增模块", GUILayout.Width(70)))
+        {
+            AddLanguageModelGUI();
+        }
+        GUILayout.EndHorizontal();
+        GUILayout.Space(9);
+        GUIStyle style = "box";
+        if (!string.IsNullOrEmpty(selectItemFullName))
+        {
+            style = "U2D.createRect";
+        }
+        GUILayout.BeginHorizontal(style);
+        GUILayout.Label("选择的文件：" + selectItemFullName);
+        if (!string.IsNullOrEmpty(selectItemFullName))
+        {
+            if (GUILayout.Button("删除", GUILayout.Width(40)))
+            {
+
+                if (EditorUtility.DisplayDialog("提示", "确定删除 :" + selectItemFullName, "OK", "Cancel"))
+                {
+                    if (selectItemFullName == selectFullFileName)
+                        selectFullFileName = "";
+                    s_languageFullKeyFileNameList.Remove(selectItemFullName);
+
+
+                    foreach (var lan in config.gameExistLanguages)
+                    {
+                        string path = LanguageDataUtils.GetLanguageSavePath(lan, selectItemFullName);
+                        FileUtils.DeleteFile(path);
+                    }
+                   // SaveData();
+                    AssetDatabase.Refresh();
+                    selectItemFullName = "";
+                    OnEnable();
+                }
+
+            }
+        }
+        GUILayout.EndHorizontal();
+        GUILayout.Space(8);
+        Rect rect = GUILayoutUtility.GetRect(0, 100000, 0, 100000);
+        treeView.OnGUI(rect);
+
+    }
+
+    void AddLanguageModelGUI()
+    {
+        GeneralDataModificationWindow.OpenWindow(this, "新增模块", "", (value) =>
+        {
+            value = EditorDrawGUIUtil.DrawBaseValue("模块名", value);
+            string tempName = value.ToString();
+            EditorGUILayout.HelpBox("下划线分割文件夹，如：AA_BB_CC", MessageType.Info);
+            if (string.IsNullOrEmpty(tempName))
+                EditorGUILayout.HelpBox("名字不能为空", MessageType.Error);
+            if (s_languageFullKeyFileNameList.Contains(tempName.Replace('_','/')))
+                EditorGUILayout.HelpBox("名字重复", MessageType.Error);
+            return value;
+        }, (value) =>
+        {
+            string tempName = value.ToString();
+            if (string.IsNullOrEmpty(tempName))
+                return false;
+            if (s_languageFullKeyFileNameList.Contains(tempName.Replace('_', '/')))
+                return false;
+            return true;
+        }, (value) =>
+         {
+             string fileName = value.ToString();
+             CreateNewFile(fileName, null);
+             string tempContent = fileName.Replace('_', '/');
+             selectFullFileName = tempContent;
+             //SaveData();
+             Init();
+         });
+
+    }
+
 
     void EditorLanguageFieldGUI()
     {
-        EditorGUI.indentLevel = 1;
-        pos_editorField = EditorGUILayout.BeginScrollView(pos_editorField, GUILayout.ExpandHeight(false));
-
-        isFoldLanguageField = EditorGUILayout.Foldout(isFoldLanguageField, "多语言模块列表");
-
-        if (isFoldLanguageField)
-        {
-            foreach (var item in s_languageKeyDict)
-            {
-                EditorGUI.indentLevel = 2;
-                if (!LanguageFieldFold.ContainsKey(item.Key))
-                {
-                    LanguageFieldFold.Add(item.Key, false);
-                }
-                EditorGUILayout.BeginHorizontal();
-
-                LanguageFieldFold[item.Key] = EditorGUILayout.Foldout(LanguageFieldFold[item.Key], item.Key);
-
-                if(GUILayout.Button("删除模块"))
-                {
-                    s_languageKeyDict.Remove(item.Key);
-                    break;
-                }
-
-                EditorGUILayout.EndHorizontal();
-
-                if (LanguageFieldFold[item.Key])
-                {
-                    EditorLanguageFieldGUI(item.Value);
-                }
-            }
-
-            EditorGUILayout.Space();
-
-            EditorGUI.indentLevel = 1;
-            AddLanguageModelGUI();
-        }
-
-        EditorGUILayout.EndScrollView();
-        
-    }
-    string m_newModelName = "";
-    bool isAddLanguageModelFold = false;
-    void AddLanguageModelGUI()
-    {
-        EditorGUI.indentLevel ++;
-        isAddLanguageModelFold = EditorGUILayout.Foldout(isAddLanguageModelFold, "新增模块");
-
-        if (isAddLanguageModelFold)
-        {
-            EditorGUI.indentLevel++;
-            m_newModelName = EditorGUILayout.TextField("模块名", m_newModelName);
-
-            if (m_newModelName != "" && !s_languageKeyDict.ContainsKey(m_newModelName))
-            {
-                if (GUILayout.Button("新增模块"))
-                {
-                    s_languageKeyDict.Add(m_newModelName, new List<string>());
-                    m_newModelName = "";
-                }
-                EditorGUILayout.Space();
-            }
-            else
-            {
-                if (s_languageKeyDict.ContainsKey(m_newModelName))
-                {
-                    EditorGUILayout.LabelField("模块名重复！", EditorGUIStyleData.WarnMessageLabel);
-                }
-            }
-
-            //不再支持新增默认模块
-            //if (!s_languageKeyDict.ContainsKey(LanguageManager.c_defaultModuleKey.ToString()))
-            //{
-            //    if (GUILayout.Button("新增默认模块"))
-            //    {
-            //        s_languageKeyDict.Add(LanguageManager.c_defaultModuleKey, new List<string>());
-            //    }
-            //}
-        }
-    }
-
-    void EditorLanguageFieldGUI(List<string> languageKeyList)
-    {
-        EditorGUI.indentLevel++;
-        for (int i = 0; i < languageKeyList.Count; i++)
-        {
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("", languageKeyList[i]);
-
-            if (GUILayout.Button("删除字段"))
-            {
-                languageKeyList.RemoveAt(i);
-                i--;
-            }
-
-            EditorGUILayout.EndHorizontal();
-        }
+        if (string.IsNullOrEmpty(selectFullFileName))
+            return;
+        if (currentFileDataTable == null)
+            return;
+        DataTable data = currentFileDataTable;
+        List<string> languageKeyList = data.TableIDs;
+        //Debug.Log("languageKeyList :" + languageKeyList.Count);
+        AddLangeuageFieldGUI(languageKeyList);
 
         EditorGUILayout.Space();
-        AddLangeuageFieldGUI(languageKeyList);
+
+        EditorDrawGUIUtil.DrawScrollView(languageKeyList, () =>
+         {
+             for (int i = 0; i < languageKeyList.Count; i++)
+             {
+                 string key = languageKeyList[i];
+                 if (!string.IsNullOrEmpty(searchKey))
+                     if (!key.Contains(searchKey))
+                         continue;
+
+                 GUILayout.Space(5);
+                 GUILayout.BeginVertical("HelpBox");
+                 EditorGUILayout.BeginHorizontal();
+
+                 string content = "";
+                 if (data != null)
+                 {
+                     if (!data.ContainsKey(key))
+                     {
+                         SingleData sd = new SingleData();
+                         sd.Add(LanguageManager.c_mainKey, key);
+                         sd.Add(LanguageManager.c_valueKey, "");
+                         data.AddData(sd);
+                     }
+                     content = data[key].GetString(LanguageManager.c_valueKey);
+                 }
+
+                 if (GUILayout.Button("X", GUILayout.Width(20)))
+                 {
+                     if (EditorUtility.DisplayDialog("提示", "确定删除key", "OK", "Cancel"))
+                     {
+                         DeleteKey(selectFullFileName, key);
+                         Init();
+                         return;
+                     }
+
+                 }
+
+                 GUILayout.Label(key);
+                 GUILayout.FlexibleSpace();
+                 if (GUILayout.Button("CopyPath"))
+                 {
+                     string tempContent = selectFullFileName;
+                     tempContent += "/" + key;
+                     TextEditor tx = new TextEditor();
+                     tx.text = tempContent;
+                     tx.OnFocus();
+                     tx.Copy();
+                     ShowNotification(new GUIContent("已复制"));
+                 }
+
+                 EditorGUILayout.EndHorizontal();
+                 GUIStyle style = "TextArea";
+                 style.wordWrap = true;
+                 style.richText = richText;
+                 content = EditorGUILayout.TextArea(content, style);
+                 if (data != null)
+                 {
+                     data[key][LanguageManager.c_valueKey] = content;
+                 }
+                 GUILayout.EndVertical();
+
+             }
+         }, "box");
+
+
+
+
     }
 
     string newField = "";
@@ -338,13 +397,14 @@ public class LanguageDataEditorWindow : EditorWindow
         if (true)
         {
             EditorGUI.indentLevel = 3;
-            newField = EditorGUILayout.TextField("字段名",newField);
+            newField = EditorGUILayout.TextField("字段名", newField);
 
             if (newField != "" && !languageKeyList.Contains(newField))
             {
                 if (GUILayout.Button("新增语言字段"))
                 {
-                    languageKeyList.Add(newField);
+                    AddNewKey(selectFullFileName, newField);
+                    Init();
                     newField = "";
                 }
                 EditorGUILayout.Space();
@@ -363,127 +423,44 @@ public class LanguageDataEditorWindow : EditorWindow
 
     #region 编辑语言
 
-    private bool isFoldList;
-    private Vector2 pos = Vector2.zero;
-
-    Dictionary<string, bool> m_EditorLanguageGUIFoldDict = new Dictionary<string, bool>();
-
     void DeleteLanguageGUI()
     {
-        if(GUILayout.Button("删除语言"))
+        if (GUILayout.Button("删除语言"))
         {
-            if (EditorUtility.DisplayDialog("警告", "确定要删除该语言吗！", "是", "取消"))
+            SystemLanguage deleteLan = config.defaultLanguage;
+            if (EditorUtility.DisplayDialog("警告", "确定要删除[" + deleteLan + "]语言吗！", "是", "取消"))
             {
-                m_currentSelectIndex = 0;
-                s_languageKeyDict.Remove(m_currentLanguage);
-                Directory.Delete(Application.dataPath + "/Resources/" + DataManager.c_directoryName + "/" + c_DataPath + "/" + m_currentLanguage,true);
-                AssetDatabase.Refresh();
-            }
-        }
-    }
-
-    void EditorLanguageGUI()
-    {
-        if (m_currentLanguage != "None")
-        {
-            EditorGUI.indentLevel = 1;
-            isFoldList = EditorGUILayout.Foldout(isFoldList, "语言数据：");
-            if (isFoldList)
-            {
-                pos = EditorGUILayout.BeginScrollView(pos, GUILayout.ExpandHeight(false));
-
-                foreach (var item in s_languageKeyDict)
-                {
-                    EditorGUI.indentLevel = 2;
-                    if (!m_langeuageDataDict.ContainsKey(item.Key))
-                    {
-                        DataTable data = new DataTable();
-                        data.TableKeys.Add(LanguageManager.c_mainKey);
-                        data.TableKeys.Add(LanguageManager.c_valueKey);
-                        data.SetDefault(LanguageManager.c_valueKey, "NoValue");
-
-                        m_langeuageDataDict.Add(item.Key, data);
-                    }
-
-                    if (!m_EditorLanguageGUIFoldDict.ContainsKey(item.Key))
-                    {
-                        m_EditorLanguageGUIFoldDict.Add(item.Key, false);
-                    }
-
-                    m_EditorLanguageGUIFoldDict[item.Key] = EditorGUILayout.Foldout(m_EditorLanguageGUIFoldDict[item.Key], item.Key);
-                    if (m_EditorLanguageGUIFoldDict[item.Key])
-                    {
-                        EditorLanguageGUI(item.Key, m_langeuageDataDict[item.Key]);
-                    }
-                }
-
-                EditorGUILayout.EndScrollView();
-                EditorGUILayout.Space();
-
-            }
-
-            SetDefaultLanguageGUI(m_currentLanguage);
-            DeleteLanguageGUI();
-        }
-    }
-
-    void EditorLanguageGUI(string modelName, DataTable languageData)
-    {
-        EditorGUI.indentLevel ++;
-        for (int i = 0; i < s_languageKeyDict[modelName].Count; i++)
-        {
-            LanguageItemGUI(languageData, s_languageKeyDict[modelName][i]);
-        }
-    }
-
-    void LanguageItemGUI(DataTable data, string key)
-    {
-        if (data.ContainsKey(key))
-        {
-            GUILayout.BeginHorizontal();
-            try
-            {
-                string contentTmp = null;
-
-                if (data[key].ContainsKey((LanguageManager.c_valueKey)))
-                {
-                    contentTmp = EditorGUILayout.TextField(key, data[key].GetString(LanguageManager.c_valueKey));
-                }
+               
+                config.gameExistLanguages.Remove(deleteLan);
+                if (config.gameExistLanguages.Count > 0)
+                    config.defaultLanguage = config.gameExistLanguages[0];
                 else
+                    config.defaultLanguage = SystemLanguage.Unknown;
+
+                if (!config.gameExistLanguages.Contains(currentLanguage))
                 {
-                    contentTmp = EditorGUILayout.TextField(key, "");
+                    currentLanguage = config.defaultLanguage;
                 }
-
-                if(contentTmp != "")
+                try
                 {
-                    data[key][LanguageManager.c_valueKey] = contentTmp;
+                    currentFileDataTable = null;
+                    selectFullFileName = "";
+                    Directory.Delete(LanguageDataUtils.SavePathDir + deleteLan, true);
                 }
+                catch (Exception e)
+                {
+                    Debug.LogError(e);
+                }
+                SaveData();
+                AssetDatabase.Refresh();
+
             }
-            catch (Exception e)
-            {
-                EditorGUILayout.TextArea("Error: " + e.ToString(), EditorGUIStyleData.ErrorMessageLabel);
-                EditorGUILayout.Space();
-            }
-
-            GUILayout.EndHorizontal();
         }
-        else
-        {
-            EditorGUILayout.BeginHorizontal();
-
-            EditorGUILayout.LabelField("缺少 " + key + " 字段", EditorGUIStyleData.WarnMessageLabel);
-
-            AddMissLanguageGUI(data, key);
-
-            EditorGUILayout.EndHorizontal();
-        }
-
     }
- 
 
-    void AddMissLanguageGUI(DataTable data,string key)
+    void AddMissLanguageGUI(DataTable data, string key)
     {
-        if(GUILayout.Button("添加记录"))
+        if (GUILayout.Button("添加记录"))
         {
             SingleData newData = new SingleData();
             newData.Add(LanguageManager.c_valueKey, "");
@@ -497,184 +474,161 @@ public class LanguageDataEditorWindow : EditorWindow
     {
         if (GUILayout.Button("保存"))
         {
-            SaveEditorConfig();
-            SaveConfig();
-
-            if (m_currentLanguage != "None")
-            {
-                foreach (var item in m_langeuageDataDict)
-                {
-                    SaveData(GetLanguageSavePath(m_currentLanguage,item.Key) ,item.Value);
-                }
-            }
+            SaveData();
+            ShowNotification(new GUIContent("已保存"));
         }
+    }
+
+    void SaveData()
+    {
+        LanguageDataUtils. SaveEditorConfig(config);
+        LanguageDataEditorUtils.SaveData(currentLanguage, selectFullFileName, currentFileDataTable);
+
+        LanguageManager.IsInit = false;
+
+        LanguageManager.Release();
+        GlobalEvent.DispatchEvent(EditorEvent.LanguageDataEditorChange);
+        UnityEditor.AssetDatabase.Refresh();
     }
 
     #endregion
 
     #region 新增语言
 
-    private bool isFoldAddLanguage = false;
-    private SystemLanguage m_selectLanguage;
-
     void AddLanguageGUI()
     {
-        EditorGUI.indentLevel = 0;
-
-        isFoldAddLanguage = EditorGUILayout.Foldout(isFoldAddLanguage, "新增语言");
-
-        if (isFoldAddLanguage)
+        if (GUILayout.Button("新增语言"))
         {
-            EditorGUI.indentLevel = 1;
+            GeneralDataModificationWindow.OpenWindow(this, "新增语言", SystemLanguage.Afrikaans, (value) =>
+             {
+                 SystemLanguage lan = (SystemLanguage)value;
+                 lan = (SystemLanguage)EditorDrawGUIUtil.DrawBaseValue("语言：", lan);
 
-            m_selectLanguage = (SystemLanguage)EditorGUILayout.EnumPopup("语言类型", m_selectLanguage);
+                 if (config!=null&& config.gameExistLanguages.Contains(lan))
+                 {
+                     EditorGUILayout.HelpBox("已存在", MessageType.Error);
+                 }
+                 if (lan == SystemLanguage.Chinese)
+                     lan = SystemLanguage.ChineseSimplified;
+                 if (lan == SystemLanguage.Unknown)
+                     lan = SystemLanguage.ChineseSimplified;
+                 return lan;
+             }, (value) =>
+             {
+                 SystemLanguage lan = (SystemLanguage)value;
+                 if (config != null && config.gameExistLanguages.Contains(lan))
+                 {
+                     return false;
+                 }
+                 return true;
+             }, (value) =>
+             {
+                 SystemLanguage lan = (SystemLanguage)value;
+                 config.gameExistLanguages.Add(lan);
+                 CreateNewLangusge(lan);
 
-            if (!s_languageList.Contains(m_selectLanguage.ToString()) )
+             }
+                 );
+        }
+    }
+
+    private void CreateNewLangusge(SystemLanguage lan)
+    {
+        if (config == null)
+        {
+            config = new LanguageSettingConfig();
+        }
+        if (config.defaultLanguage == SystemLanguage.Unknown)
+        {
+            config.defaultLanguage = lan;
+            config.gameExistLanguages.Add(lan);
+            currentLanguage = lan;
+        }
+        else
+        {
+            foreach (var item in s_languageFullKeyFileNameList)
             {
-                if (GUILayout.Button("新增"))
+                DataTable dt = LanguageDataUtils.LoadFileData(config.defaultLanguage, item);
+                Dictionary<string, string> dic = new Dictionary<string, string>();
+                foreach (var id in dt.TableIDs)
                 {
-                    s_languageList.Add(m_selectLanguage.ToString());
-                    LoadLanguage(m_selectLanguage.ToString());
-                    isFoldAddLanguage = false;
+                    dic.Add(id, "");
                 }
-            }
-            else
-            {
-                EditorGUILayout.LabelField("已存在该语言",EditorGUIStyleData.WarnMessageLabel);
+                CreateLanguageNewFile(lan, item, dic);
             }
         }
-
-        EditorGUILayout.Space();
-    }
-
-    #endregion
-
-    #region 生成模块类
-
-    void GenerateLanuageClassGUI()
-    {
-        if(GUILayout.Button( "生成语言模块声明类"))
-        {
-            GenerateLanuageClass();
-        }
-    }
-
-    void GenerateLanuageClass()
-    {
-        string content = "";
-        string SavePath = Application.dataPath + "/Script/Generate/LanguageDef.cs";
-
-
-        content += "public class LanguageDef\n";
-        content += "{\n";
-
-        //只创建模块名
-        foreach (var item in s_languageKeyDict)
-        {
-            content += "\tpublic const string c_" + StringFilter(item.Key) + " = \"" + item.Key + "\";\n";
-
-            List<string> list = item.Value;
-            for (int i = 0; i < list.Count; i++)
-            {
-                content += "\tpublic const string c_" + StringFilter(item.Key) + "_" + StringFilter(list[i]) + " = \"" + list[i] + "\";\n";
-            }
-
-            content += "\n";
-        }
-
-        content += "}\n";
-
-        EditorUtil.WriteStringByFile(SavePath, content);
+        SaveData();
         AssetDatabase.Refresh();
+        Init();
     }
+
 
     /// <summary>
-    /// 去掉所有不合法的字符
+    /// 新建多语言文件,给每种语言添加新文件
     /// </summary>
-    /// <param name="content"></param>
-    /// <returns></returns>
-    string StringFilter(string content)
+    /// <param name="fileName"></param>
+    /// <param name="contentDic"></param>
+    /// <returns>返回每个key对应的多语言访问key</returns>
+    public Dictionary<string, string> CreateNewFile(string fileName, Dictionary<string, string> contentDic)
     {
-        return content.Replace("-","");
-    }
-
-    #endregion
-
-    #region FindLanguageData
-
-    private string m_directoryPath;
-    void FindAllDataName()
-    {
-        AssetDatabase.Refresh();
-        s_languageList = new List<string>();
-
-        s_languageList.Add("None");
-
-        m_directoryPath = Application.dataPath + "/Resources/" + DataManager.c_directoryName + "/" + c_DataPath;
-
-        FileTool.CreatPath(m_directoryPath);
-
-        FindConfigName(m_directoryPath);
-    }
-
-    public void FindConfigName(string path)
-    {
-        //string[] allUIPrefabName = Directory.GetFiles(path);
-        //foreach (var item in allUIPrefabName)
-        //{
-        //    if (item.EndsWith(".txt"))
-        //    {
-        //        //string configName = FileTool.RemoveExpandName(FileTool.GetFileNameByPath(item));
-        //        s_dataNameList.Add(FileTool.RemoveExpandName(PathTool.GetDirectoryRelativePath(m_directoryPath + "/", item)));
-        //    }
-        //}
-
-        string[] dires = Directory.GetDirectories(path);
-        for (int i = 0; i < dires.Length; i++)
+        Dictionary<string, string> keyPaths = new Dictionary<string, string>();
+        string tempContent = fileName.Replace('_', '/');
+        //给每种语言添加文件
+        foreach (var item in config.gameExistLanguages)
         {
-            s_languageList.Add(FileTool.RemoveExpandName(PathTool.GetDirectoryRelativePath(m_directoryPath + "/", dires[i])));
-
-            //FindConfigName(dires[i]);
+            keyPaths = CreateLanguageNewFile(item, tempContent, contentDic);
         }
+        UnityEditor.AssetDatabase.Refresh();
+        return keyPaths;
     }
 
-    public static List<string> GetLanguageKeyList()
+    public Dictionary<string, string> CreateLanguageNewFile(SystemLanguage language, string fullKeyFileName, Dictionary<string, string> contentDic)
     {
-        if(s_languageKeyList != null)
+        Dictionary<string, string> keyPaths = new Dictionary<string, string>();
+
+        DataTable data = new DataTable();
+        data.TableKeys.Add(LanguageManager.c_mainKey);
+        data.TableKeys.Add(LanguageManager.c_valueKey);
+        data.SetDefault(LanguageManager.c_valueKey, "NoValue");
+        if (contentDic != null)
         {
-            LoadEditorConfig();
+            foreach (var item in contentDic)
+            {
+                SingleData sd = new SingleData();
+                sd.Add(LanguageManager.c_mainKey, item.Key);
+                sd.Add(LanguageManager.c_valueKey, item.Value);
+                data.AddData(sd);
+                keyPaths.Add(item.Key, fullKeyFileName + "/" + item.Key);
+            }
+
         }
-        return s_languageKeyList;
+        LanguageDataEditorUtils.SaveData(language, fullKeyFileName, data);
+       
+        return keyPaths;
+    }
+    private void AddNewKey(string fullKeyFileName, string key)
+    {
+        foreach (var language in config.gameExistLanguages)
+        {
+            DataTable data = LanguageDataUtils.LoadFileData(language, fullKeyFileName);
+            SingleData sd = new SingleData();
+            sd.Add(LanguageManager.c_mainKey, key);
+            sd.Add(LanguageManager.c_valueKey, "");
+            data.AddData(sd);
+
+            LanguageDataEditorUtils.SaveData(language, fullKeyFileName, data);
+        }
+        UnityEditor.AssetDatabase.Refresh();
     }
 
-    #endregion
-
-    #region 功能函数
-
-    string GetLanguageSavePath(string langeuageName, string modelName)
+    private void DeleteKey(string fullKeyFileName, string key)
     {
-        return c_DataPath + "/" + langeuageName + "/" + LanguageManager.GetLanguageDataName(langeuageName, modelName);
-    }
-
-    public static bool GetIsExistDataEditor(string DataName)
-    {
-        return "" != ResourceIOTool.ReadStringByResource(
-                        PathTool.GetRelativelyPath(DataManager.c_directoryName,
-                                                    DataName,
-                                                    DataManager.c_expandName));
-    }
-
-    public static void SaveData(string ConfigName, DataTable data)
-    {
-        EditorUtil.WriteStringByFile(
-            PathTool.GetAbsolutePath(
-                ResLoadLocation.Resource,
-                PathTool.GetRelativelyPath(
-                    DataManager.c_directoryName,
-                    ConfigName,
-                    DataManager.c_expandName)),
-            DataTable.Serialize(data));
-
+        foreach (var language in config.gameExistLanguages)
+        {
+            DataTable data = LanguageDataUtils. LoadFileData(language, fullKeyFileName);
+            data.RemoveData(key);
+            LanguageDataEditorUtils.SaveData(language, fullKeyFileName, data);
+        }
         UnityEditor.AssetDatabase.Refresh();
     }
 

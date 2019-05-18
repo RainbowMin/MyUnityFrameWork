@@ -4,7 +4,6 @@ using System.Text;
 
 public class PathTool
 {
-
     public static string GetPath(ResLoadLocation loadType)
     {
         StringBuilder path = new StringBuilder();
@@ -45,7 +44,14 @@ public class PathTool
         }
         return path.ToString();
     }
-
+    /// <summary>
+    /// 更新资源存放在Application.persistentDataPath+"/Resources/"目录下
+    /// </summary>
+    /// <returns></returns>
+    public static string GetAssetsBundlePersistentPath()
+    {
+        return Application.persistentDataPath + "/Resources/";
+    }
 
     /// <summary>
     /// 组合绝对路径

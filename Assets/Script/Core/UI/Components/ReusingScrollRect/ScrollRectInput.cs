@@ -2,12 +2,12 @@
 using System.Collections;
 using UnityEngine.UI;
 
-public class ScrollRectInput : ScrollRect
+public class ScrollRectInput : ScrollRect , UILifeCycleInterface
 {
     public string m_UIEventKey;
     InputEventRegisterInfo<InputUIOnScrollEvent> m_register;
 
-    public virtual void Init(string UIEventKey)
+    public virtual void Init(string UIEventKey,int id)
     {
         m_UIEventKey = UIEventKey;
         m_register = InputUIEventProxy.GetOnScrollListener(m_UIEventKey, name, OnSetContentAnchoredPosition);
@@ -15,7 +15,7 @@ public class ScrollRectInput : ScrollRect
 
     public virtual void Dispose()
     {
-        m_register.RemoveListener(true);
+        m_register.RemoveListener();
     }
 
     protected override void SetContentAnchoredPosition(Vector2 position)

@@ -21,10 +21,10 @@ public class WXPayClass : PayInterface
     {
         Debug.LogWarning("=========WXPayClass Init===========");
         WXListener.Instance.GetComponent<WXListener>().wXPayClass = this;
-        GlobalEvent.AddTypeEvent<PrePay2Client>(OnPrePay);
+        //GlobalEvent.AddTypeEvent<PrePay2Client>(OnPrePay);
     }
 
-    /// <summary>
+/*      /// <summary>
     /// 获得预支付订单
     /// </summary>
     /// <param name="e"></param>
@@ -46,7 +46,7 @@ public class WXPayClass : PayInterface
         WXListener.Instance.GetComponent<WXListener>().Mch_orderID = e.mch_orderID;
 
         IndentListener(e.prepay_id,nonceStr, timeStamp, sign);
-    }
+    }  */
 
     /// <summary>
     /// 统一支付入口
@@ -59,7 +59,7 @@ public class WXPayClass : PayInterface
     {
         Debug.LogWarning("send WXpay----message-----" + goodsID);
         //给服务器发消息1
-        PrePay2Service.SendPrePayMsg(StoreName.WX, goodsID);
+        //PrePay2Service.SendPrePayMsg(StoreName.WX, goodsID);
     }
 
 

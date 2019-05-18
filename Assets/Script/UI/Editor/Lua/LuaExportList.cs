@@ -5,11 +5,11 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
-using BindType = ToLuaMenu.BindType;
+//using BindType = ToLuaMenu.BindType;
 
 public class LuaExportList
 {
-    public static string saveDir = Application.dataPath + "/Script/LuaGenerate";
+ /*    public static string saveDir = Application.dataPath + "/Script/LuaGenerate";
     public static string toluaBaseType = Application.dataPath + "/Script/LuaGenerate/BaseType/";
 
     //在这里添加你要导出注册到lua的类型列表
@@ -224,5 +224,5 @@ public class LuaExportList
     public static DelegateType _DT(Type t)
     {
         return new DelegateType(t);
-    }
+    } */
 }
